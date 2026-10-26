@@ -101,9 +101,21 @@ def strip_tags(text: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", text))
 
 
+def fail(msg: str) -> None:
+    """Понятная ошибка: видна в сводке запуска GitHub Actions."""
+    print(f"::error title=Telegram::{msg}")
+    sys.exit(1)
+
+
 def send(text: str) -> None:
-    token = os.environ["TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if not token:
+        fail("Не задан секрет TELEGRAM_BOT_TOKEN (Settings → Secrets and variables → Actions)")
+    if not chat_id:
+        fail("Не задан секрет TELEGRAM_CHAT_ID (Settings → Secrets and variables → Actions)")
+    if not re.fullmatch(r"-?\d+|@\w+", chat_id):
+        fail("TELEGRAM_CHAT_ID должен быть числом (Id от @userinfobot), без пробелов и лишних символов")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     for part in split_message(text):
         payload = {"chat_id": chat_id, "text": part, "parse_mode": "HTML",
@@ -113,7 +125,14 @@ def send(text: str) -> None:
             print(f"HTML отклонён: {r.text}; отправляю простым текстом", file=sys.stderr)
             payload = {"chat_id": chat_id, "text": strip_tags(part),
                        "disable_web_page_preview": True}
-            requests.post(url, json=payload, timeout=30).raise_for_status()
+            r = requests.post(url, json=payload, timeout=30)
+            if r.status_code != 200:
+                desc = r.json().get("description", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text
+                hint = {401: "неверный токен бота — проверьте TELEGRAM_BOT_TOKEN",
+                        400: "проверьте TELEGRAM_CHAT_ID и что вы нажали Start в боте",
+                        403: "бот заблокирован или вы не нажимали Start в боте",
+                        404: "неверный токен бота — проверьте TELEGRAM_BOT_TOKEN"}.get(r.status_code, "")
+                fail(f"Telegram ответил {r.status_code}: {desc}. {hint}")
         time.sleep(1)
 
 
