@@ -110,6 +110,11 @@ def fail(msg: str) -> None:
 def send(text: str) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    # частые ошибки при копировании: префикс «bot», ссылка целиком, кавычки, пробелы
+    m = re.search(r"\d{6,}:[A-Za-z0-9_-]{30,}", token)
+    if token and not m:
+        fail("TELEGRAM_BOT_TOKEN не похож на токен бота (ожидается вид 1234567890:AAH…). Скопируйте его заново из @BotFather → /mybots → API Token")
+    token = m.group(0) if m else token
     if not token:
         fail("Не задан секрет TELEGRAM_BOT_TOKEN (Settings → Secrets and variables → Actions)")
     if not chat_id:
